@@ -1,0 +1,573 @@
+// IntellectIT — AI integratsiyalangan o'quv platformasi
+// Sxema hujjati: .claude/plans/ dagi reja, 6-bo'lim
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Foydalanuvchilar va guruhlar
+// ============================================================
+
+enum Role {
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  role         Role     @default(STUDENT)
+  fullName     String
+  username     String   @unique
+  passwordHash String?
+  telegramId   BigInt?  @unique
+  telegramUser String?
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  mustChangePw Boolean  @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  groups            GroupMember[]
+  submissions       Submission[]
+  quizAttempts      QuizAttempt[]
+  mastery           TopicMastery[]
+  masteryEvents     MasteryEvent[]
+  xpEvents          XpEvent[]
+  badges            UserBadge[]
+  streak            Streak?
+  notificationPref  NotificationPref?
+  assignedTargets   AssignmentTarget[]
+  createdAssignments Assignment[]      @relation("AssignmentCreator")
+  linkTokens        TelegramLinkToken[]
+
+  @@index([role, isActive])
+}
+
+enum GroupKind {
+  SCHOOL_CLASS
+  CLUB
+}
+
+model Group {
+  id        String    @id @default(cuid())
+  name      String
+  kind      GroupKind @default(SCHOOL_CLASS)
+  note      String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  members GroupMember[]
+  targets AssignmentTarget[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  userId   String
+  groupId  String
+  joinedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([groupId])
+}
+
+// ============================================================
+// O'quv dasturi: Track -> Module -> Topic
+// ============================================================
+
+enum Track {
+  PYTHON
+  HTML_CSS
+  JAVASCRIPT
+  WEB
+  AI
+  CYBER
+}
+
+model Module {
+  id    String @id @default(cuid())
+  track Track
+  name  String
+  slug  String @unique
+  order Int    @default(0)
+
+  topics Topic[]
+
+  @@index([track, order])
+}
+
+model Topic {
+  id          String  @id @default(cuid())
+  moduleId    String
+  name        String
+  slug        String  @unique
+  description String?
+  order       Int     @default(0)
+  difficulty  Int     @default(1) // 1..5
+  prereqSlugs String[] @default([])
+
+  module      Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+  questions   Question[]
+  mastery     TopicMastery[]
+  masteryEvents MasteryEvent[]
+
+  @@index([moduleId, order])
+}
+
+// ============================================================
+// Vazifalar
+// ============================================================
+
+enum AssignmentType {
+  CODE
+  HTML_CSS
+  TEXT
+  PROJECT
+}
+
+enum AssignmentSource {
+  TEACHER
+  AI_GENERATED
+  AI_PRACTICE
+}
+
+enum ContentStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Assignment {
+  id           String           @id @default(cuid())
+  title        String
+  description  String // Markdown
+  type         AssignmentType   @default(CODE)
+  language     String? // "python" | "html" | "css"
+  topicId      String
+  difficulty   Int              @default(1) // 1..5
+  starterCode  String?
+  solutionCode String? // o'quvchiga HECH QACHON yuborilmaydi
+  rubric       String?
+  maxPoints    Int              @default(100)
+  timeLimitMin Int?
+  source       AssignmentSource @default(TEACHER)
+  status       ContentStatus    @default(DRAFT)
+  createdById  String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  topic       Topic              @relation(fields: [topicId], references: [id])
+  createdBy   User               @relation("AssignmentCreator", fields: [createdById], references: [id])
+  testCases   TestCase[]
+  targets     AssignmentTarget[]
+  submissions Submission[]
+
+  @@index([topicId, status])
+  @@index([status, difficulty])
+}
+
+model TestCase {
+  id             String  @id @default(cuid())
+  assignmentId   String
+  name           String?
+  stdin          String  @default("")
+  expectedStdout String
+  isHidden       Boolean @default(false)
+  points         Int     @default(1)
+  order          Int     @default(0)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, order])
+}
+
+model AssignmentTarget {
+  id           String    @id @default(cuid())
+  assignmentId String
+  groupId      String?
+  userId       String?
+  assignedAt   DateTime  @default(now())
+  dueAt        DateTime?
+  reason       String? // "Zaif mavzu: sikllar"
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  group      Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+// ============================================================
+// Javoblar
+// ============================================================
+
+enum SubmissionStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  GRADED
+  FAILED
+}
+
+model Submission {
+  id           String           @id @default(cuid())
+  assignmentId String
+  studentId    String
+  code         String           @default("")
+  draftCode    String?
+  codeHash     String? // sha256 — takroriy AI chaqiruvini oldini olish + ko'chirish aniqlash
+  attemptNo    Int              @default(1)
+  status       SubmissionStatus @default(DRAFT)
+  testsPassed  Int              @default(0)
+  testsTotal   Int              @default(0)
+  autoScore    Int?
+  finalScore   Int?
+  teacherNote  String?
+  isLate       Boolean          @default(false)
+  submittedAt  DateTime?
+  gradedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  assignment  Assignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student     User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  testResults TestResult[]
+  aiReview    AiReview?
+
+  @@index([studentId, assignmentId])
+  @@index([assignmentId, status])
+  @@index([codeHash])
+}
+
+model TestResult {
+  id           String  @id @default(cuid())
+  submissionId String
+  testCaseId   String
+  passed       Boolean
+  actualOutput String  @default("")
+  stderr       String?
+  runtimeMs    Int?
+  order        Int     @default(0)
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, order])
+}
+
+enum AiStatus {
+  PENDING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+model AiReview {
+  id           String   @id @default(cuid())
+  submissionId String   @unique
+  provider     String? // "anthropic" | "openai"
+  model        String?
+  status       AiStatus @default(PENDING)
+  score        Int?
+  summary      String?
+  strengths    Json? // string[]
+  issues       Json? // { line, topicSlug, severity, explanation, hint }[]
+  nextTopics   Json? // string[]
+  codeQuality  Int?
+  tokensIn     Int?
+  tokensOut    Int?
+  cacheReadIn  Int?
+  costUsd      Decimal? @db.Decimal(10, 6)
+  latencyMs    Int?
+  retryCount   Int      @default(0)
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([status, retryCount])
+}
+
+// ============================================================
+// Testlar (quiz)
+// ============================================================
+
+enum QuestionType {
+  MCQ_SINGLE
+  MCQ_MULTI
+  TRUE_FALSE
+  SHORT_ANSWER
+  CODE_OUTPUT
+  FILL_BLANK
+}
+
+enum QuestionSource {
+  TEACHER
+  AI_GENERATED
+}
+
+model Question {
+  id          String         @id @default(cuid())
+  topicId     String
+  type        QuestionType
+  prompt      String
+  codeSnippet String?
+  options     Json? // { id, text, isCorrect }[]
+  correctText String?
+  explanation String         @default("")
+  difficulty  Int            @default(1)
+  points      Int            @default(1)
+  source      QuestionSource @default(TEACHER)
+  isApproved  Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+
+  topic     Topic        @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  quizItems QuizItem[]
+  answers   QuizAnswer[]
+
+  @@index([topicId, isApproved])
+}
+
+enum QuizReveal {
+  IMMEDIATELY
+  AFTER_SUBMIT
+  AFTER_DUE
+  NEVER
+}
+
+model Quiz {
+  id            String        @id @default(cuid())
+  title         String
+  description   String?
+  timeLimitMin  Int?
+  shuffle       Boolean       @default(true)
+  maxAttempts   Int           @default(1)
+  showAnswersAt QuizReveal    @default(AFTER_SUBMIT)
+  status        ContentStatus @default(DRAFT)
+  isDiagnostic  Boolean       @default(false)
+  dueAt         DateTime?
+  targets       Json? // { groupIds: string[], userIds: string[] }
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items    QuizItem[]
+  attempts QuizAttempt[]
+
+  @@index([status])
+}
+
+model QuizItem {
+  id         String @id @default(cuid())
+  quizId     String
+  questionId String
+  order      Int    @default(0)
+
+  quiz     Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, questionId])
+  @@index([quizId, order])
+}
+
+model QuizAttempt {
+  id          String    @id @default(cuid())
+  quizId      String
+  studentId   String
+  attemptNo   Int       @default(1)
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  score       Int?
+  maxScore    Int?
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers QuizAnswer[]
+
+  @@index([studentId, quizId])
+}
+
+model QuizAnswer {
+  id           String   @id @default(cuid())
+  attemptId    String
+  questionId   String
+  answerJson   Json
+  isCorrect    Boolean?
+  pointsEarned Int      @default(0)
+  aiFeedback   String?
+  timeSpentSec Int?
+
+  attempt  QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+}
+
+// ============================================================
+// Mavzu o'zlashtirish (tahlil yuragi)
+// ============================================================
+
+model TopicMastery {
+  id             String    @id @default(cuid())
+  userId         String
+  topicId        String
+  score          Float     @default(0) // 0..1
+  confidence     Float     @default(0) // 0..1
+  evidenceCount  Int       @default(0)
+  lastPracticeAt DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, score])
+  @@index([topicId, score])
+}
+
+model MasteryEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  topicId     String
+  source      String // "submission" | "quiz" | "ai_issue" | "decay" | "teacher_override"
+  sourceId    String?
+  weight      Float
+  result      Float
+  scoreBefore Float
+  scoreAfter  Float
+  note        String?
+  createdAt   DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([userId, topicId, createdAt])
+}
+
+// ============================================================
+// Rag'batlantirish
+// ============================================================
+
+model XpEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  reason    String
+  refId     String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Streak {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  current       Int       @default(0)
+  longest       Int       @default(0)
+  lastActiveDay DateTime? @db.Date
+  freezeCount   Int       @default(2)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Badge {
+  id          String @id @default(cuid())
+  slug        String @unique
+  name        String
+  description String
+  icon        String @default("award")
+  tier        Int    @default(1)
+  ruleJson    Json
+
+  users UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+// ============================================================
+// Tizim
+// ============================================================
+
+model NotificationPref {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  telegramOn    Boolean @default(true)
+  newAssignment Boolean @default(true)
+  gradeReady    Boolean @default(true)
+  dueReminder   Boolean @default(true)
+  streakWarning Boolean @default(true)
+  weeklyReport  Boolean @default(true)
+  quietFrom     Int     @default(22)
+  quietTo       Int     @default(7)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TelegramLinkToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model AiUsageLog {
+  id        String   @id @default(cuid())
+  provider  String
+  model     String
+  operation String
+  tokensIn  Int      @default(0)
+  tokensOut Int      @default(0)
+  cacheRead Int      @default(0)
+  costUsd   Decimal  @default(0) @db.Decimal(10, 6)
+  latencyMs Int?
+  success   Boolean  @default(true)
+  errorType String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([provider, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

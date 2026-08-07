@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "intellectit-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3100", "-H", "0.0.0.0"],
+      "port": 3100,
+      "autoPort": false,
+      "url": "http://localhost:3100"
+    }
+  ]
+}

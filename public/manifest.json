@@ -1,0 +1,44 @@
+{
+  "name": "IntellectIT — IT o'quv platformasi",
+  "short_name": "IntellectIT",
+  "description": "Python, HTML va CSS o'rganish uchun AI yordamchisi bo'lgan platforma",
+  "lang": "uz",
+  "dir": "ltr",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Vazifalar",
+      "url": "/assignments"
+    },
+    {
+      "name": "Rivojlanish",
+      "url": "/progress"
+    }
+  ]
+}
