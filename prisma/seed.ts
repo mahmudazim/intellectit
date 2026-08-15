@@ -25,7 +25,7 @@ type ModuleSeed = {
 // ============================================================
 // O'quv dasturi — o'qituvchi keyinchalik panel orqali tahrirlaydi
 // ============================================================
-const CURRICULUM: ModuleSeed[] = [
+export const CURRICULUM: ModuleSeed[] = [
   {
     slug: "python-asoslari",
     name: "Python asoslari",
@@ -260,7 +260,7 @@ const CURRICULUM: ModuleSeed[] = [
 // ============================================================
 // Nishonlar
 // ============================================================
-const BADGES = [
+export const BADGES = [
   {
     slug: "first-step",
     name: "Birinchi qadam",
@@ -359,7 +359,7 @@ const BADGES = [
   },
 ];
 
-async function main() {
+export async function runSeed() {
   console.log("Seed boshlandi...");
 
   // ---------- 1. O'qituvchi ----------
@@ -440,11 +440,15 @@ async function main() {
   console.log("Seed tugadi.");
 }
 
-main()
-  .catch((e) => {
-    console.error("Seed xatosi:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await db.$disconnect();
-  });
+const isDirectRun = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`;
+
+if (isDirectRun) {
+  runSeed()
+    .catch((e) => {
+      console.error("Seed xatosi:", e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await db.$disconnect();
+    });
+}
