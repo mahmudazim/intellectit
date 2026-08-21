@@ -136,7 +136,16 @@ export async function getWeakTopics(
     .slice(0, limit);
 }
 
-/** Sinf bo'yicha mavzu holati — o'qituvchi hisoboti uchun. */
+/**
+ * Sinf bo'yicha mavzu holati — o'qituvchi hisoboti uchun.
+ *
+ * Diqqat: bu yerda MIN_CONFIDENCE bilan filtrlanmaydi. Ishonch chegarasi
+ * faqat individual o'quvchiga "sen zaifsan" deb aytishdan saqlaydi
+ * (getTopicStates/getWeakTopics). O'qituvchi esa hatto bitta test yoki
+ * vazifa natijasini ham darhol ko'rishi kerak — aks holda hisobot
+ * bo'sh ko'rinadi va o'qituvchi "test/vazifa berdim, lekin ko'rinmayapti"
+ * deb o'ylaydi.
+ */
 export async function getClassTopicStats(groupId?: string) {
   const students = await db.user.findMany({
     where: {
@@ -162,7 +171,13 @@ export async function getClassTopicStats(groupId?: string) {
     }),
     db.topicMastery.findMany({
       where: { userId: { in: ids } },
-      select: { userId: true, topicId: true, score: true, confidence: true },
+      select: {
+        userId: true,
+        topicId: true,
+        score: true,
+        confidence: true,
+        evidenceCount: true,
+      },
     }),
   ]);
 
@@ -171,9 +186,10 @@ export async function getClassTopicStats(groupId?: string) {
 
   const topicRows = topics
     .map((t) => {
+      // Har qanday dalil hisobga olinadi — MIN_CONFIDENCE bu yerda qo'llanmaydi.
       const scores = students
         .map((s) => map.get(key(s.id, t.id)))
-        .filter((m): m is NonNullable<typeof m> => Boolean(m) && m!.confidence >= MIN_CONFIDENCE);
+        .filter((m): m is NonNullable<typeof m> => Boolean(m));
 
       const avg =
         scores.length > 0
@@ -192,7 +208,8 @@ export async function getClassTopicStats(groupId?: string) {
           const m = map.get(key(s.id, t.id));
           return {
             userId: s.id,
-            score: m && m.confidence >= MIN_CONFIDENCE ? m.score : null,
+            score: m ? m.score : null,
+            lowConfidence: m ? m.confidence < MIN_CONFIDENCE : false,
           };
         }),
       };

@@ -45,10 +45,14 @@ export function buildStudentBlock(input: GradeInput): string {
     )
     .join("\n");
 
+  const testSection =
+    testSummary.total === 0
+      ? "Bu vazifa turi uchun avtomatik test yo'q — to'g'riligini shart va rubrikaga qarab o'zingiz baholang."
+      : `${testSummary.passed} / ${testSummary.total} test o'tdi.\n${failures ? `\nO'tmagan testlar:\n${failures}` : "Barcha testlar o'tdi."}`;
+
   return `## Avtomatik test natijasi
 
-${testSummary.passed} / ${testSummary.total} test o'tdi.
-${failures ? `\nO'tmagan testlar:\n${failures}` : "Barcha testlar o'tdi."}
+${testSection}
 
 ## O'quvchi kodi
 

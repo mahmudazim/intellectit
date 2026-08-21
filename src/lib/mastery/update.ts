@@ -129,42 +129,59 @@ export async function applySubmissionEvidence(
       testsTotal: true,
       isLate: true,
       assignment: { select: { topic: { select: { slug: true } } } },
-      aiReview: { select: { status: true, issues: true } },
+      aiReview: { select: { status: true, score: true, issues: true } },
     },
   });
-  if (!submission || submission.testsTotal === 0) return;
+  if (!submission) return;
 
   const evidence: Evidence[] = [];
   const primarySlug = submission.assignment.topic.slug;
 
-  // ---- 1. Test natijasi ----
-  const ratio = submission.testsPassed / submission.testsTotal;
-  let result: number;
-  let weight: number;
+  // ---- 1. Asosiy dalil: test natijasi (bo'lsa) yoki AI umumiy bahosi ----
+  // HTML_CSS/TEXT/PROJECT kabi avtomatik testi yo'q turlarda obyektiv
+  // signal yo'q — AI'ning "score" maydoni yagona manba bo'ladi.
+  if (submission.testsTotal > 0) {
+    const ratio = submission.testsPassed / submission.testsTotal;
+    let result: number;
+    let weight: number;
 
-  if (ratio === 1) {
-    // Birinchi urinishda to'liq yechgan — eng kuchli dalil
-    result = submission.attemptNo === 1 ? 1 : submission.attemptNo <= 3 ? 0.85 : 0.75;
-    weight = 1;
-  } else if (ratio === 0) {
-    result = 0;
-    weight = 1;
-  } else {
-    result = ratio;
-    weight = 0.8;
+    if (ratio === 1) {
+      // Birinchi urinishda to'liq yechgan — eng kuchli dalil
+      result = submission.attemptNo === 1 ? 1 : submission.attemptNo <= 3 ? 0.85 : 0.75;
+      weight = 1;
+    } else if (ratio === 0) {
+      result = 0;
+      weight = 1;
+    } else {
+      result = ratio;
+      weight = 0.8;
+    }
+
+    // Muddatdan keyin topshirgan bo'lsa biroz kamayadi
+    if (submission.isLate) result *= 0.9;
+
+    evidence.push({
+      topicSlug: primarySlug,
+      result,
+      weight,
+      source: "submission",
+      sourceId: submission.id,
+      note: `${submission.testsPassed}/${submission.testsTotal} test, ${submission.attemptNo}-urinish`,
+    });
+  } else if (submission.aiReview?.status === "DONE" && submission.aiReview.score !== null) {
+    let result = submission.aiReview.score / 100;
+    if (submission.isLate) result *= 0.9;
+
+    evidence.push({
+      topicSlug: primarySlug,
+      result,
+      // Avtomatik testdan yengilroq dalil — AI bahosi sub'ektivroq
+      weight: 0.6,
+      source: "submission",
+      sourceId: submission.id,
+      note: `AI baho: ${submission.aiReview.score}/100 (avtomatik test yo'q)`,
+    });
   }
-
-  // Muddatdan keyin topshirgan bo'lsa biroz kamayadi
-  if (submission.isLate) result *= 0.9;
-
-  evidence.push({
-    topicSlug: primarySlug,
-    result,
-    weight,
-    source: "submission",
-    sourceId: submission.id,
-    note: `${submission.testsPassed}/${submission.testsTotal} test, ${submission.attemptNo}-urinish`,
-  });
 
   // ---- 2. AI aniqlagan xatolar ----
   if (submission.aiReview?.status === "DONE" && submission.aiReview.issues) {

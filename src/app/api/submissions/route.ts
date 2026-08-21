@@ -186,20 +186,21 @@ export async function POST(request: Request) {
 
   // AI baholash 5-20 soniya oladi — o'quvchi kutmasin.
   // `after()` javob yuborilgandan keyin ishlaydi (Vercel'da ham).
-  if (assignment.type === "CODE") {
-    await db.aiReview.upsert({
-      where: { submissionId: updated.id },
-      create: { submissionId: updated.id, status: "PENDING" },
-      update: { status: "PENDING", error: null },
-    });
-    after(() => gradeSubmissionWithAi(updated.id));
-  }
+  // Barcha vazifa turlari uchun (CODE, HTML_CSS, TEXT, PROJECT) — avtomatik
+  // test bo'lmagan turlarda AI yagona baholash manbai bo'ladi, aks holda
+  // ular hech qachon baholanmay, hisobotda ham ko'rinmay qoladi.
+  await db.aiReview.upsert({
+    where: { submissionId: updated.id },
+    create: { submissionId: updated.id, status: "PENDING" },
+    update: { status: "PENDING", error: null },
+  });
+  after(() => gradeSubmissionWithAi(updated.id));
 
   return NextResponse.json({
     submissionId: updated.id,
     testsPassed,
     testsTotal: assignment.testCases.length,
     autoScore,
-    aiPending: assignment.type === "CODE",
+    aiPending: true,
   });
 }

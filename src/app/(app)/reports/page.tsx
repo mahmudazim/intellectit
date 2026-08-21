@@ -215,12 +215,15 @@ export default async function ReportsPage({
                             <div
                               className={cn(
                                 "size-6 rounded",
-                                cellColor(p.score)
+                                cellColor(p.score),
+                                p.lowConfidence && "opacity-50"
                               )}
                               title={
                                 p.score === null
                                   ? "Ma'lumot yo'q"
-                                  : `${Math.round(p.score * 100)}%`
+                                  : p.lowConfidence
+                                    ? `${Math.round(p.score * 100)}% (kam dalil — 1 urinish)`
+                                    : `${Math.round(p.score * 100)}%`
                               }
                             />
                           </td>

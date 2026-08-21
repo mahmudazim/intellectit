@@ -254,10 +254,16 @@ export async function gradeSubmissionWithAi(submissionId: string): Promise<void>
 }
 
 /**
- * Yakuniy ball: test natijasi asosiy, AI kod sifatini biroz qo'shadi.
+ * Yakuniy ball.
  *
- * Formula: 85% avtomatik test + 15% AI kod sifati.
- * Nega test ustun: u obyektiv. AI faqat "chiroyli yozilganmi" ni baholaydi.
+ * Avtomatik testi bor vazifalar (CODE): 85% test natijasi + 15% AI kod
+ * sifati — test ustun, chunki u obyektiv, AI faqat "chiroyli yozilganmi"
+ * ni baholaydi.
+ *
+ * Avtomatik testi yo'q vazifalar (HTML_CSS, TEXT, PROJECT): obyektiv
+ * signal yo'q, shuning uchun AI'ning o'zi chiqargan umumiy ball (85%)
+ * + kod sifati (15%) ishlatiladi.
+ *
  * O'qituvchi qo'lda tuzatgan bo'lsa (teacherNote bor) — tegilmaydi.
  */
 async function applyFinalScore(submissionId: string) {
@@ -266,15 +272,17 @@ async function applyFinalScore(submissionId: string) {
     select: {
       autoScore: true,
       teacherNote: true,
-      aiReview: { select: { codeQuality: true, status: true } },
+      aiReview: { select: { score: true, codeQuality: true, status: true } },
     },
   });
 
   if (!s || s.teacherNote) return;
-  if (s.autoScore === null) return;
   if (s.aiReview?.status !== "DONE" || s.aiReview.codeQuality === null) return;
 
-  const final = Math.round(s.autoScore * 0.85 + s.aiReview.codeQuality * 0.15);
+  const primary = s.autoScore ?? s.aiReview.score;
+  if (primary === null) return;
+
+  const final = Math.round(primary * 0.85 + s.aiReview.codeQuality * 0.15);
 
   await db.submission.update({
     where: { id: submissionId },
