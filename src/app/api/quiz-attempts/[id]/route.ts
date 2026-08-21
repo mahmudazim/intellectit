@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { getApiUser } from "@/lib/guards";
-import type { QuestionOption } from "@/lib/quiz";
+import { buildAttemptReview } from "@/lib/quiz";
 
 export const runtime = "nodejs";
 
@@ -62,36 +62,5 @@ export async function GET(
     return NextResponse.json({ error: "Ruxsat yo'q." }, { status: 403 });
   }
 
-  // Javoblarni ko'rsatsak bo'ladimi?
-  const reveal = attempt.quiz.showAnswersAt;
-  const dueOver = attempt.quiz.dueAt ? new Date() > attempt.quiz.dueAt : true;
-  const showAnswers =
-    user.role === "TEACHER" ||
-    reveal === "IMMEDIATELY" ||
-    reveal === "AFTER_SUBMIT" ||
-    (reveal === "AFTER_DUE" && dueOver);
-
-  return NextResponse.json({
-    score: attempt.score,
-    maxScore: attempt.maxScore,
-    showAnswers,
-    answers: attempt.answers.map((a) => {
-      const opts = (a.question.options as QuestionOption[] | null) ?? null;
-      return {
-        questionId: a.questionId,
-        prompt: a.question.prompt,
-        codeSnippet: a.question.codeSnippet,
-        type: a.question.type,
-        isCorrect: a.isCorrect,
-        pointsEarned: a.pointsEarned,
-        maxPoints: a.question.points,
-        aiFeedback: a.aiFeedback,
-        yourAnswer: a.answerJson,
-        // Faqat ruxsat berilganda
-        options: showAnswers ? opts : opts?.map((o) => ({ ...o, isCorrect: false })) ?? null,
-        correctText: showAnswers ? a.question.correctText : null,
-        explanation: showAnswers ? a.question.explanation : null,
-      };
-    }),
-  });
+  return NextResponse.json(buildAttemptReview(attempt, user.role === "TEACHER"));
 }

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { QuestionType } from "@/generated/prisma/enums";
+import type { QuestionType, QuizReveal } from "@/generated/prisma/enums";
 
 /** Savol variantining shakli (Question.options JSON maydonida saqlanadi). */
 export type QuestionOption = { id: string; text: string; isCorrect: boolean };
@@ -98,7 +98,13 @@ export function gradeAnswer(
   }
 }
 
-/** Shu o'quvchiga berilgan testlar. */
+/**
+ * Shu o'quvchiga berilgan testlar.
+ *
+ * Test arxivlangandan keyin ham (status: ARCHIVED) o'quvchining oldingi
+ * urinishlari va bali ro'yxatda ko'rinishda qolishi kerak — arxivlash
+ * faqat yangi urinishni to'xtatadi, natijani yashirmasligi kerak.
+ */
 export async function getStudentQuizzes(studentId: string) {
   const memberships = await db.groupMember.findMany({
     where: { userId: studentId },
@@ -107,7 +113,7 @@ export async function getStudentQuizzes(studentId: string) {
   const groupIds = memberships.map((m) => m.groupId);
 
   const quizzes = await db.quiz.findMany({
-    where: { status: "PUBLISHED" },
+    where: { status: { in: ["PUBLISHED", "ARCHIVED"] } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -116,6 +122,7 @@ export async function getStudentQuizzes(studentId: string) {
       timeLimitMin: true,
       maxAttempts: true,
       isDiagnostic: true,
+      status: true,
       dueAt: true,
       targets: true,
       _count: { select: { items: true } },
@@ -152,18 +159,20 @@ export async function getStudentQuizzes(studentId: string) {
         (best, a) => (a.score !== null && (best === null || a.score > best) ? a.score : best),
         null
       ),
-      canAttempt: mine.filter((a) => a.submittedAt).length < q.maxAttempts,
+      // Arxivlangan testga yangi urinish qilib bo'lmaydi — faqat natija ko'riladi
+      canAttempt:
+        q.status === "PUBLISHED" && mine.filter((a) => a.submittedAt).length < q.maxAttempts,
     };
   });
 }
 
-/** Shu o'quvchi shu testga kira oladimi? */
+/** Shu o'quvchi shu testga kira oladimi (ishlash yoki arxivlangan natijasini ko'rish)? */
 export async function canStudentAccessQuiz(
   studentId: string,
   quizId: string
 ): Promise<boolean> {
   const quiz = await db.quiz.findFirst({
-    where: { id: quizId, status: "PUBLISHED" },
+    where: { id: quizId, status: { in: ["PUBLISHED", "ARCHIVED"] } },
     select: { targets: true },
   });
   if (!quiz) return false;
@@ -177,4 +186,66 @@ export async function canStudentAccessQuiz(
   });
   const groupIds = memberships.map((m) => m.groupId);
   return (t.groupIds ?? []).some((g) => groupIds.includes(g));
+}
+
+/** `/api/quiz-attempts/[id]` javobi bilan bir xil shakl — sahifalarda qayta ishlatiladi. */
+export type AttemptReviewInput = {
+  score: number | null;
+  maxScore: number | null;
+  quiz: { showAnswersAt: QuizReveal; dueAt: Date | null };
+  answers: {
+    questionId: string;
+    answerJson: unknown;
+    isCorrect: boolean | null;
+    pointsEarned: number;
+    aiFeedback: string | null;
+    question: {
+      type: QuestionType;
+      prompt: string;
+      codeSnippet: string | null;
+      options: unknown;
+      correctText: string | null;
+      explanation: string | null;
+      points: number;
+    };
+  }[];
+};
+
+/**
+ * Urinish tafsilotini (savol-savol tahlil) ko'rsatish uchun tayyorlaydi.
+ * To'g'ri javoblar faqat quiz.showAnswersAt ruxsat berganda yoki ko'ruvchi
+ * o'qituvchi bo'lganda qaytariladi.
+ */
+export function buildAttemptReview(attempt: AttemptReviewInput, isTeacher: boolean) {
+  const reveal = attempt.quiz.showAnswersAt;
+  const dueOver = attempt.quiz.dueAt ? new Date() > attempt.quiz.dueAt : true;
+  const showAnswers =
+    isTeacher ||
+    reveal === "IMMEDIATELY" ||
+    reveal === "AFTER_SUBMIT" ||
+    (reveal === "AFTER_DUE" && dueOver);
+
+  return {
+    score: attempt.score,
+    maxScore: attempt.maxScore,
+    showAnswers,
+    answers: attempt.answers.map((a) => {
+      const opts = (a.question.options as QuestionOption[] | null) ?? null;
+      return {
+        questionId: a.questionId,
+        prompt: a.question.prompt,
+        codeSnippet: a.question.codeSnippet,
+        type: a.question.type,
+        isCorrect: a.isCorrect,
+        pointsEarned: a.pointsEarned,
+        maxPoints: a.question.points,
+        aiFeedback: a.aiFeedback,
+        yourAnswer: a.answerJson as StudentAnswer | null,
+        // Faqat ruxsat berilganda
+        options: showAnswers ? opts : (opts?.map((o) => ({ ...o, isCorrect: false })) ?? null),
+        correctText: showAnswers ? a.question.correctText : null,
+        explanation: showAnswers ? a.question.explanation : null,
+      };
+    }),
+  };
 }

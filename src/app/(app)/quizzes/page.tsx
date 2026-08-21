@@ -13,7 +13,8 @@ export default async function StudentQuizzesPage() {
   const quizzes = await getStudentQuizzes(user.id);
 
   const todo = quizzes.filter((q) => q.canAttempt);
-  const done = quizzes.filter((q) => !q.canAttempt);
+  // Hali umuman ishlanmagan arxiv testlar ro'yxatda ko'rinmasin (0/0 ball chalg'itmasin)
+  const done = quizzes.filter((q) => !q.canAttempt && q.attempts.length > 0);
 
   return (
     <div className="space-y-5">
@@ -77,20 +78,22 @@ export default async function StudentQuizzesPage() {
             const max = q.attempts[0]?.maxScore ?? 0;
             const percent = max > 0 ? Math.round((best / max) * 100) : 0;
             return (
-              <Card key={q.id}>
-                <CardContent className="flex items-center gap-3 p-4 pt-4">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
-                    <CircleCheck size={17} aria-hidden />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium leading-snug">{q.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {best} / {max} ball
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-lg font-bold">{percent}%</span>
-                </CardContent>
-              </Card>
+              <Link key={q.id} href={`/quizzes/${q.id}`} className="block">
+                <Card className="transition-colors hover:border-primary/40">
+                  <CardContent className="flex items-center gap-3 p-4 pt-4">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
+                      <CircleCheck size={17} aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium leading-snug">{q.title}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {best} / {max} ball
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-lg font-bold">{percent}%</span>
+                  </CardContent>
+                </Card>
+              </Link>
             );
           })}
         </section>

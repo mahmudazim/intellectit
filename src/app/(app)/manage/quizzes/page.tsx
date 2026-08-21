@@ -98,13 +98,16 @@ export default async function ManageQuizzesPage() {
             return (
               <Card key={q.id}>
                 <CardContent className="flex flex-wrap items-center gap-3 p-4 pt-4">
-                  <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/manage/quizzes/${q.id}`}
+                    className="min-w-0 flex-1 hover:underline"
+                  >
                     <p className="font-medium leading-snug">{q.title}</p>
                     <p className="text-sm text-muted-foreground">
                       {q._count.items} savol · {q._count.attempts} urinish
                       {q.timeLimitMin ? ` · ${q.timeLimitMin} daq` : ""}
                     </p>
-                  </div>
+                  </Link>
                   <Badge variant={s.variant}>{s.label}</Badge>
                   {q.status === "DRAFT" && (
                     <form action={setQuizStatusAction}>

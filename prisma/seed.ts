@@ -1,4 +1,6 @@
 import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -440,7 +442,11 @@ export async function runSeed() {
   console.log("Seed tugadi.");
 }
 
-const isDirectRun = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`;
+// import.meta.url uchraydigan "file://" solishtirish Windows'da (drive-letter
+// URL'lari uch chiziqchali: file:///C:/...) ishlamaydi — shuning uchun ikkalasi
+// ham haqiqiy fayl yo'liga aylantiriladi.
+const isDirectRun =
+  !!process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
 if (isDirectRun) {
   runSeed()
